@@ -1,28 +1,25 @@
 import { prisma } from "@/lib/prisma";
+import { DashboardOrders } from "@/components/DashboardOrders";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const [
     totalOrders,
-    pendingCount,
     inProgressCount,
     slaughteredCount,
     readyCount,
-    deliveredCount,
-    cancelledCount,
     withFilesCount,
+    cancelledCount,
   ] = await Promise.all([
     prisma.order.count(),
-    prisma.order.count({ where: { proofStatus: "PENDING" } }),
     prisma.order.count({ where: { proofStatus: "IN_PROGRESS" } }),
     prisma.order.count({ where: { proofStatus: "SLAUGHTERED" } }),
     prisma.order.count({ where: { proofStatus: "READY" } }),
-    prisma.order.count({ where: { proofStatus: "DELIVERED" } }),
-    prisma.order.count({ where: { proofStatus: "CANCELLED" } }),
     prisma.order.count({
       where: { proofFiles: { some: {} } },
     }),
+    prisma.order.count({ where: { proofStatus: "CANCELLED" } }),
   ]);
 
   const uniqueCustomers = await prisma.order.groupBy({
@@ -46,7 +43,7 @@ export default async function DashboardPage() {
       <h1 className="mb-6 text-2xl font-bold text-maroon">لوحة التحكم</h1>
       <p className="mb-8 text-taupe">إدارة طلبات التوثيق</p>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
         {stats.map((stat) => (
           <div
             key={stat.label}
@@ -57,6 +54,8 @@ export default async function DashboardPage() {
           </div>
         ))}
       </div>
+
+      <DashboardOrders />
     </div>
   );
 }
