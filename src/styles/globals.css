@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap');
+
+body {
+  font-family: 'Tajawal', 'Cairo', system-ui, sans-serif;
+  direction: rtl;
+  background-color: #fdf8f3;
+  color: #2d2d2d;
+}

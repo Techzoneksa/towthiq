@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AdminRole {
+  ADMIN
+}
+
+enum OrderSource {
+  SALLA
+  SHOPIFY
+  MANUAL
+}
+
+enum ProofStatus {
+  PENDING
+  IN_PROGRESS
+  SLAUGHTERED
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum ProofFileType {
+  IMAGE
+  VIDEO
+}
+
+enum ImportStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String?
+  role         AdminRole @default(ADMIN)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  proofFiles    ProofFile[]
+  importBatches ImportBatch[]
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  source          OrderSource
+  externalOrderId String?
+  orderNumber     String
+  customerName    String?
+  customerMobile  String?
+  customerEmail   String?
+  orderDate       DateTime?
+  amount          Decimal?
+  currency        String      @default("SAR")
+  storeStatus     String?
+  proofStatus     ProofStatus @default(PENDING)
+  proofToken      String      @unique @default(cuid())
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  items     OrderItem[]
+  proofFiles ProofFile[]
+
+  @@index([orderNumber])
+  @@index([customerMobile])
+  @@index([customerEmail])
+  @@index([proofToken])
+  @@index([source])
+  @@index([source, orderNumber])
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  name      String
+  quantity  Int
+  price     Decimal?
+  sku       String?
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model ProofFile {
+  id           String        @id @default(cuid())
+  orderId      String
+  type         ProofFileType
+  storageKey   String
+  fileName     String
+  mimeType     String
+  size         Int
+  sortOrder    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  uploadedById String?
+
+  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  uploadedBy   AdminUser? @relation(fields: [uploadedById], references: [id])
+
+  @@index([orderId])
+  @@index([type])
+  @@index([storageKey])
+}
+
+model ImportBatch {
+  id            String       @id @default(cuid())
+  source        OrderSource
+  fileName      String
+  totalRows     Int
+  successRows   Int
+  failedRows    Int
+  status        ImportStatus
+  createdAt     DateTime     @default(now())
+  createdById   String?
+
+  createdBy AdminUser?    @relation(fields: [createdById], references: [id])
+  errors    ImportError[]
+}
+
+model ImportError {
+  id            String   @id @default(cuid())
+  importBatchId String
+  rowNumber     Int
+  reason        String
+  rawData       Json?
+  createdAt     DateTime @default(now())
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+}
