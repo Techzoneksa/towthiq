@@ -24,7 +24,8 @@
 5. Customer visits `/track`, searches by mobile or email.
 6. If orders found, customer selects one and is redirected to `/proof/[token]`.
 7. Proof page shows status message and signed URLs for media files.
-8. No webhooks, no API integrations, no auto-sync. Everything is manual.
+8. Salla and Shopify stay manual (Excel/CSV only).
+9. Zid orders arrive automatically via webhook at `/api/webhooks/zid?event=<event>` (see [ZID_FLOW]).
 
 ---
 
@@ -33,10 +34,11 @@
 ### Enums
 
 - `AdminRole`: ADMIN
-- `OrderSource`: SALLA, SHOPIFY, MANUAL
+- `OrderSource`: SALLA, SHOPIFY, MANUAL, ZID
 - `ProofStatus`: PENDING, IN_PROGRESS, SLAUGHTERED, READY, DELIVERED, CANCELLED
 - `ProofFileType`: IMAGE, VIDEO
 - `ImportStatus`: PENDING, COMPLETED, FAILED, PARTIAL
+- `WebhookEventStatus`: RECEIVED, PROCESSED, SKIPPED, FAILED
 
 ### Models
 
@@ -72,6 +74,7 @@
 | updatedAt | DateTime | @updatedAt |
 
 Indexes: orderNumber, customerMobile, customerEmail, proofToken, source, (source + orderNumber)
+Unique: (source + externalOrderId) — used to upsert Zid orders; NULLs (Excel imports) don't collide
 
 #### OrderItem
 | Field | Type | Notes |
@@ -123,6 +126,38 @@ Indexes: orderId, type, storageKey
 | rawData | Json? | |
 | createdAt | DateTime | @default(now()) |
 
+#### ZidConnection
+| Field | Type | Notes |
+|-------|------|-------|
+| id | String | @id @default(cuid()) |
+| storeId | String | @unique |
+| storeName | String? | |
+| authorizationToken | String | encrypted (AES-256-GCM) |
+| managerToken | String | encrypted |
+| refreshToken | String | encrypted |
+| expiresAt | DateTime | |
+| refreshTokenExpiresAt | DateTime? | |
+| lastSyncedAt | DateTime? | |
+| createdAt | DateTime | @default(now()) |
+| updatedAt | DateTime | @updatedAt |
+
+#### WebhookEvent
+| Field | Type | Notes |
+|-------|------|-------|
+| id | String | @id @default(cuid()) |
+| provider | OrderSource | |
+| event | String | e.g. order.create |
+| storeId | String? | |
+| externalId | String? | external order id |
+| payloadHash | String | @unique — sha256(event + body), dedups retries |
+| payload | Json | |
+| status | WebhookEventStatus | @default(RECEIVED) |
+| error | String? | |
+| attempts | Int | @default(0) |
+| orderId | String? | FK → Order (SetNull) |
+| processedAt | DateTime? | |
+| createdAt | DateTime | @default(now()) |
+
 ---
 
 ## [ROUTES]
@@ -156,6 +191,7 @@ Indexes: orderId, type, storageKey
 | `/api/admin/r2-health` | R2 connectivity check |
 | `/api/lookup` | Customer order lookup |
 | `/api/proof/[token]` | Get proof data by token |
+| `/api/webhooks/zid` | Zid order webhooks (Basic Auth) |
 
 ---
 
@@ -303,6 +339,18 @@ Indexes: orderId, type, storageKey
 
 ---
 
+## [ZID_FLOW]
+
+1. Zid POSTs to `/api/webhooks/zid?event=<event>` with the Basic Auth credentials from `ZID_WEBHOOK_USERNAME` / `ZID_WEBHOOK_PASSWORD` (Zid does not sign payloads).
+2. The raw payload is stored in `WebhookEvent`; an identical retry is acknowledged as a duplicate. The endpoint replies 200 immediately.
+3. After responding, the order is re-fetched from the Zid API using the store's `ZidConnection` — payload content is never trusted. With no connection the event is SKIPPED (unless `ZID_TRUST_WEBHOOK_PAYLOAD=true`, testing only).
+4. The order is mapped (`src/lib/zid.ts`) and upserted by (source=ZID, externalOrderId). `orderNumber` = Zid order id.
+5. Items are written only when the order is first created; updates refresh order fields and `storeStatus` but never touch `proofStatus` or `proofToken`.
+6. Masked marketplace customer data (containing `*`) is dropped. Zid timestamps without a timezone are read as Riyadh time.
+7. Pending (phase 2+): OAuth connect, webhook registration, fallback sync, token refresh cron, admin page.
+
+---
+
 ## [HOSTINGER_DEPLOYMENT_SETTINGS]
 
 - **Framework:** Next.js
@@ -402,7 +450,7 @@ Indexes: orderId, type, storageKey
 - `/dashboard/settings` — deferred to post-Milestone 1
 - Export functionality — not in scope for now
 - WhatsApp integration — not in scope for now
-- Salla/Shopify API integration — not in scope (manual only)
+- Salla/Shopify API integration — not in scope (manual only); Zid is integrated via webhooks
 - Customer registration — not in scope
 - Payment — not in scope
-- Webhooks — not in scope
+- Webhooks — Zid only

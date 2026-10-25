@@ -46,6 +46,7 @@ const SOURCE_LABELS: Record<string, string> = {
   SALLA: "سلة",
   SHOPIFY: "Shopify",
   MANUAL: "يدوي",
+  ZID: "زد",
 };
 
 const STATUS_LABELS: Record<string, string> = {

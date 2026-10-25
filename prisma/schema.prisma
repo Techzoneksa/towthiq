@@ -15,6 +15,7 @@ enum OrderSource {
   SALLA
   SHOPIFY
   MANUAL
+  ZID
 }
 
 enum ProofStatus {
@@ -36,6 +37,13 @@ enum ImportStatus {
   COMPLETED
   FAILED
   PARTIAL
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  SKIPPED
+  FAILED
 }
 
 model AdminUser {
@@ -69,9 +77,11 @@ model Order {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  items     OrderItem[]
-  proofFiles ProofFile[]
+  items         OrderItem[]
+  proofFiles    ProofFile[]
+  webhookEvents WebhookEvent[]
 
+  @@unique([source, externalOrderId])
   @@index([orderNumber])
   @@index([customerMobile])
   @@index([customerEmail])
@@ -104,8 +114,8 @@ model ProofFile {
   createdAt    DateTime      @default(now())
   uploadedById String?
 
-  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  uploadedBy   AdminUser? @relation(fields: [uploadedById], references: [id])
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  uploadedBy AdminUser? @relation(fields: [uploadedById], references: [id])
 
   @@index([orderId])
   @@index([type])
@@ -113,15 +123,15 @@ model ProofFile {
 }
 
 model ImportBatch {
-  id            String       @id @default(cuid())
-  source        OrderSource
-  fileName      String
-  totalRows     Int
-  successRows   Int
-  failedRows    Int
-  status        ImportStatus
-  createdAt     DateTime     @default(now())
-  createdById   String?
+  id          String       @id @default(cuid())
+  source      OrderSource
+  fileName    String
+  totalRows   Int
+  successRows Int
+  failedRows  Int
+  status      ImportStatus
+  createdAt   DateTime     @default(now())
+  createdById String?
 
   createdBy AdminUser?    @relation(fields: [createdById], references: [id])
   errors    ImportError[]
@@ -136,4 +146,40 @@ model ImportError {
   createdAt     DateTime @default(now())
 
   importBatch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+}
+
+// Tokens are stored encrypted (see src/lib/token-crypto.ts), never in plain text.
+model ZidConnection {
+  id                    String    @id @default(cuid())
+  storeId               String    @unique
+  storeName             String?
+  authorizationToken    String
+  managerToken          String
+  refreshToken          String
+  expiresAt             DateTime
+  refreshTokenExpiresAt DateTime?
+  lastSyncedAt          DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model WebhookEvent {
+  id          String             @id @default(cuid())
+  provider    OrderSource
+  event       String
+  storeId     String?
+  externalId  String?
+  payloadHash String             @unique
+  payload     Json
+  status      WebhookEventStatus @default(RECEIVED)
+  error       String?
+  attempts    Int                @default(0)
+  orderId     String?
+  processedAt DateTime?
+  createdAt   DateTime           @default(now())
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([provider, externalId])
+  @@index([status])
 }
